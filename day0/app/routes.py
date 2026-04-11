@@ -6,6 +6,10 @@ from datetime import datetime, timezone
 # create blueprint
 main = Blueprint("main", __name__)
 
+@main.route("/") #root route
+def home():
+    return "Hello World!"
+
 
 @main.route("/api/classify", methods=['GET']) #/api/classify route
 def classify():
