@@ -24,8 +24,8 @@ A lightweight REST API built with Flask that classifies names by gender using th
 ## Installation
 
 ```bash
-git clone <your-repo-url>
-cd <project-folder>
+git clone https://github.com/mazi-kunle/HNG14.git
+cd day0
 pip install -r requirements.txt
 ```
 
@@ -37,6 +37,8 @@ pip install -r requirements.txt
 ```bash
 flask run
 ```
+## live website
+https://hng-14-bza9us6y4-mazi-kunles-projects.vercel.app
 
 ## API Reference
 
