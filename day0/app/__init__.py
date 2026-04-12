@@ -7,7 +7,7 @@ def create_app():
     app.url_map.strict_slashes = False
 
 
-    CORS(app)
+    CORS(app, resources={r"/*": {"origins": "*"}})
 
     from app.routes import main
     app.register_blueprint(main)
