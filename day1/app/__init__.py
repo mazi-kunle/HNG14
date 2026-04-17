@@ -15,7 +15,7 @@ def create_app():
     f"{os.environ.get('MYSQLPASSWORD', 'password')}@"
     f"{os.environ.get('MYSQLHOST', 'localhost')}:"
     f"{os.environ.get('MYSQLPORT', '3306')}/"
-    f"{os.environ.get('MYSQLDATABASE', 'day1_db')}"
+    f"{os.environ.get('MYSQL_DATABASE', 'day1_db')}"
     )
 
     CORS(app, resources={r"/*": {"origins": "*"}})
