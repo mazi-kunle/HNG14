@@ -11,7 +11,7 @@ def create_app():
     app.url_map.strict_slashes = False
     
     app.config['SQLALCHEMY_DATABASE_URI'] = (
-    f"mysql+pymysql://{os.environ.get('MYSQLUSER', 'usert')}:"
+    f"mysql+pymysql://{os.environ.get('MYSQLUSER', 'user')}:"
     f"{os.environ.get('MYSQLPASSWORD', 'password')}@"
     f"{os.environ.get('MYSQLHOST', 'localhost')}:"
     f"{os.environ.get('MYSQLPORT', '3306')}/"
