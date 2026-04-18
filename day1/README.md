@@ -25,7 +25,7 @@ A lightweight REST API built with Flask that classifies names by gender using th
 
 ```bash
 git clone https://github.com/mazi-kunle/HNG14.git
-cd day0
+cd day1
 pip install -r requirements.txt
 ```
 
@@ -35,14 +35,15 @@ pip install -r requirements.txt
 
 **Development:**
 ```bash
-flask run
+python3 main.py
 ```
 ## live website
-https://hng-14-bza9us6y4-mazi-kunles-projects.vercel.app
+https://hng14-production-81d0.up.railway.app
+
 
 ## API Reference
 
-### `GET /api/classify`
+### `GET /api/profile`
 
 Classifies a name by gender.
 
