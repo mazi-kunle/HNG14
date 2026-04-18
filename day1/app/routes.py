@@ -44,7 +44,7 @@ def post_profiles():
 
     check_data = DB().check_profile(name)
     if check_data:
-        return jsonify(check_data), 201
+        return jsonify(check_data)
 
     # consume genderize api
     g_data = genderize(name) 
