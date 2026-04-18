@@ -83,7 +83,10 @@ The server starts on `http://localhost:5000` by default.
 
 ---
 
----
+## live website
+
+https://hng14-production-81d0.up.railway.app/api
+
 ## API Reference
 
 ### 1. Create a Profile
