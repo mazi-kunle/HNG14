@@ -1,89 +1,213 @@
-# Gender Classification API
+# Profile Intelligence Service
 
-A lightweight REST API built with Flask that classifies names by gender using the [Genderize.io](https://genderize.io) API. It processes and enriches the raw Genderize response before returning it to the client.
-
----
-
-## Features
-
-- Classifies a name as male or female with a probability score
-- Computes a confidence flag based on probability and sample size
-- Input validation with appropriate HTTP error codes
-- CORS enabled for cross-origin access
-- Clean, consistent JSON error responses
+A Flask-based REST API that enriches name-based profiles by aggregating data from three external APIs — Genderize, Agify, and Nationalize — and storing the results for retrieval and management.
 
 ---
 
-## Requirements
+## Table of Contents
+
+- [Overview](#overview)
+- [Tech Stack](#tech-stack)
+- [Getting Started](#getting-started)
+- [API Reference](#api-reference)
+- [Error Handling](#error-handling)
+- [Edge Cases](#edge-cases)
+
+---
+
+## Overview
+
+This service accepts a name, calls three public APIs in parallel to infer gender, estimated age, and likely nationality, aggregates the results into a structured profile, and stores it with a UUID v7 identifier and a UTC timestamp.
+
+**External APIs used (no API key required):**
+
+| API | Endpoint |
+|---|---|
+| Genderize | `https://api.genderize.io?name={name}` |
+| Agify | `https://api.agify.io?name={name}` |
+| Nationalize | `https://api.nationalize.io?name={name}` |
+
+**Data processing rules:**
+
+- **Genderize** → extracts `gender`, `gender_probability`, and `count` (renamed to `sample_size`)
+- **Agify** → extracts `age` and classifies it into an `age_group`:
+  - `0–12` → `child`
+  - `13–19` → `teenager`
+  - `20–59` → `adult`
+  - `60+` → `senior`
+- **Nationalize** → extracts the country list and picks the entry with the highest probability as `country_id`
+
+Profiles are **idempotent** — submitting the same name twice returns the existing record instead of creating a duplicate.
+
+---
+
+## Tech Stack
+
+- **Runtime:** Python 3
+- **Framework:** Flask
+- **ID generation:** UUID v7
+- **Timestamps:** UTC ISO 8601
+
+---
+
+## Getting Started
+
+### Prerequisites
 
 - Python 3.8+
 - pip
 
----
-
-## Installation
+### Installation
 
 ```bash
-git clone https://github.com/mazi-kunle/HNG14.git
-cd day1
+# Clone the repository
+git clone <your-repo-url>
+cd <repo-folder>
+
+# Create and activate a virtual environment
+python -m venv venv
+source venv/bin/activate        # macOS/Linux
+venv\Scripts\activate           # Windows
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
----
+### Running the Server
 
-## Running the Server
-
-**Development:**
 ```bash
-python3 main.py
+flask run
 ```
-## live website
-https://hng14-production-81d0.up.railway.app
 
+The server starts on `http://localhost:5000` by default.
+
+---
 
 ## API Reference
 
-### `GET /api/profile`
+### 1. Create a Profile
 
-Classifies a name by gender.
+**`POST /api/profiles`**
 
-**Query Parameters**
+Accepts a name, enriches it via external APIs, and stores the result. If a profile for that name already exists, the existing record is returned.
 
-| Parameter | Type   | Required | Description        |
-|-----------|--------|----------|--------------------|
-| `name`    | string | Yes      | The name to classify |
+**Request body:**
+```json
+{ "name": "ella" }
+```
 
-**Success Response `200`**
-
+**Success — new profile (201):**
 ```json
 {
   "status": "success",
   "data": {
-    "name": "James",
-    "gender": "male",
-    "probability": 0.99,
+    "id": "b3f9c1e2-7d4a-4c91-9c2a-1f0a8e5b6d12",
+    "name": "ella",
+    "gender": "female",
+    "gender_probability": 0.99,
     "sample_size": 1234,
-    "is_confident": true,
-    "processed_at": "2026-04-01T12:00:00Z"
+    "age": 46,
+    "age_group": "adult",
+    "country_id": "DRC",
+    "country_probability": 0.85,
+    "created_at": "2026-04-01T12:00:00Z"
   }
 }
 ```
 
-**Fields**
-
-| Field          | Description                                                       |
-|----------------|-------------------------------------------------------------------|
-| `gender`       | `male` or `female`                                                |
-| `probability`  | Confidence score from Genderize (0 to 1)                          |
-| `sample_size`  | Number of samples Genderize used for the prediction               |
-| `is_confident` | `true` if probability >= 0.7 AND sample_size >= 100, else `false` |
-| `processed_at` | UTC timestamp of when the request was processed (ISO 8601)        |
+**Success — profile already exists (200):**
+```json
+{
+  "status": "success",
+  "message": "Profile already exists",
+  "data": { "...existing profile..." }
+}
+```
 
 ---
 
-## Error Responses
+### 2. Get a Profile by ID
 
-All errors follow this structure:
+**`GET /api/profiles/{id}`**
+
+**Success (200):**
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "b3f9c1e2-7d4a-4c91-9c2a-1f0a8e5b6d12",
+    "name": "emmanuel",
+    "gender": "male",
+    "gender_probability": 0.99,
+    "sample_size": 1234,
+    "age": 25,
+    "age_group": "adult",
+    "country_id": "NG",
+    "country_probability": 0.85,
+    "created_at": "2026-04-01T12:00:00Z"
+  }
+}
+```
+
+---
+
+### 3. List Profiles
+
+**`GET /api/profiles`**
+
+Returns all stored profiles. Supports optional case-insensitive query parameters for filtering.
+
+**Query parameters:**
+
+| Parameter | Description | Example |
+|---|---|---|
+| `gender` | Filter by gender | `male`, `female` |
+| `country_id` | Filter by country code | `NG`, `US` |
+| `age_group` | Filter by age group | `adult`, `child` |
+
+**Example:** `GET /api/profiles?gender=male&country_id=NG`
+
+**Success (200):**
+```json
+{
+  "status": "success",
+  "count": 2,
+  "data": [
+    {
+      "id": "id-1",
+      "name": "emmanuel",
+      "gender": "male",
+      "age": 25,
+      "age_group": "adult",
+      "country_id": "NG"
+    },
+    {
+      "id": "id-2",
+      "name": "sarah",
+      "gender": "female",
+      "age": 28,
+      "age_group": "adult",
+      "country_id": "US"
+    }
+  ]
+}
+```
+
+---
+
+### 4. Delete a Profile
+
+**`DELETE /api/profiles/{id}`**
+
+Deletes the profile with the given ID.
+
+**Success:** `204 No Content`
+
+---
+
+## Error Handling
+
+All error responses follow this structure:
 
 ```json
 {
@@ -92,30 +216,39 @@ All errors follow this structure:
 }
 ```
 
-| Status Code | Cause                                              |
-|-------------|----------------------------------------------------|
-| `400`       | `name` parameter is missing or empty               |
-| `422`       | `name` parameter is not a valid string             |
-| `500`       | No prediction available for the provided name      |
-| `502`       | Genderize API is unreachable or returned an error  |
+| Status Code | Meaning |
+|---|---|
+| `400 Bad Request` | Missing or empty `name` field |
+| `404 Not Found` | Profile with the given ID does not exist |
+| `422 Unprocessable Entity` | Invalid field type |
+| `500 Internal Server Error` | Unexpected server failure |
+| `502 Bad Gateway` | An external API returned an invalid or incomplete response |
+
+**502 error format:**
+
+```json
+{
+  "status": "502",
+  "message": "${externalApi} returned an invalid response"
+}
+```
+
+Where `${externalApi}` is one of: `Genderize`, `Agify`, or `Nationalize`.
 
 ---
 
-## Project Structure
+## Edge Cases
 
-```
-.
-├── app/
-│   ├── __init__.py        # App factory
-│   └── routes.py          # /api/classify endpoint       
-├── run.py
-└── README.md
-```
+The following conditions trigger a `502` response and prevent any profile from being stored:
+
+- **Genderize** returns `gender: null` or `count: 0`
+- **Agify** returns `age: null`
+- **Nationalize** returns an empty country list
 
 ---
 
-## Dependencies
+## Notes
 
-- [Flask](https://flask.palletsprojects.com/) — web framework
-- [Flask-CORS](https://flask-cors.readthedocs.io/) — CORS header support
-- [Requests](https://docs.python-requests.org/) — HTTP client for Genderize API
+- **CORS:** All responses include `Access-Control-Allow-Origin: *`
+- **Timestamps:** All `created_at` values are in UTC ISO 8601 format
+- **IDs:** All profile IDs are UUID v7
