@@ -10,8 +10,6 @@ A Flask-based REST API that enriches name-based profiles by aggregating data fro
 - [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
 - [API Reference](#api-reference)
-- [Error Handling](#error-handling)
-- [Edge Cases](#edge-cases)
 
 ---
 
@@ -61,7 +59,7 @@ Profiles are **idempotent** — submitting the same name twice returns the exist
 
 ```bash
 # Clone the repository
-git clone <your-repo-url>
+git clone (https://github.com/mazi-kunle/HNG14.git)
 cd day1
 
 # Create and activate a virtual environment
