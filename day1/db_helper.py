@@ -11,7 +11,7 @@ class DB:
     def check_profile(self, name):
         '''checks for pre-existing data
         '''
-        profile = Profile.query.filter(Profile.name==name).all()
+        profile = Profile.query.filter(Profile.name==name).first()
 
         if profile:
             return {

@@ -13,7 +13,6 @@ def home():
 
 @main.route("/profiles", methods=['GET', 'POST']) #/api/profiles route
 def post_profiles():
-
     if request.method == 'GET':
         profiles = DB().get_profiles(request.args)
 
@@ -42,9 +41,10 @@ def post_profiles():
             "message": "Unprocessable Entity"
         }), 422
 
+    # indenpodency check
     check_data = DB().check_profile(name)
     if check_data:
-        return jsonify(check_data), 201
+        return jsonify(check_data), 200
 
     # consume genderize api
     g_data = genderize(name) 
