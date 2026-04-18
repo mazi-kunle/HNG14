@@ -62,7 +62,7 @@ Profiles are **idempotent** — submitting the same name twice returns the exist
 ```bash
 # Clone the repository
 git clone <your-repo-url>
-cd <repo-folder>
+cd day1
 
 # Create and activate a virtual environment
 python -m venv venv
@@ -76,13 +76,14 @@ pip install -r requirements.txt
 ### Running the Server
 
 ```bash
-flask run
+python3 main.py
 ```
 
 The server starts on `http://localhost:5000` by default.
 
 ---
 
+---
 ## API Reference
 
 ### 1. Create a Profile
@@ -204,51 +205,3 @@ Deletes the profile with the given ID.
 **Success:** `204 No Content`
 
 ---
-
-## Error Handling
-
-All error responses follow this structure:
-
-```json
-{
-  "status": "error",
-  "message": "<error message>"
-}
-```
-
-| Status Code | Meaning |
-|---|---|
-| `400 Bad Request` | Missing or empty `name` field |
-| `404 Not Found` | Profile with the given ID does not exist |
-| `422 Unprocessable Entity` | Invalid field type |
-| `500 Internal Server Error` | Unexpected server failure |
-| `502 Bad Gateway` | An external API returned an invalid or incomplete response |
-
-**502 error format:**
-
-```json
-{
-  "status": "502",
-  "message": "${externalApi} returned an invalid response"
-}
-```
-
-Where `${externalApi}` is one of: `Genderize`, `Agify`, or `Nationalize`.
-
----
-
-## Edge Cases
-
-The following conditions trigger a `502` response and prevent any profile from being stored:
-
-- **Genderize** returns `gender: null` or `count: 0`
-- **Agify** returns `age: null`
-- **Nationalize** returns an empty country list
-
----
-
-## Notes
-
-- **CORS:** All responses include `Access-Control-Allow-Origin: *`
-- **Timestamps:** All `created_at` values are in UTC ISO 8601 format
-- **IDs:** All profile IDs are UUID v7
