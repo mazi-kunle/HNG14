@@ -35,7 +35,7 @@ pip install -r requirements.txt
 
 **Development:**
 ```bash
-flask run
+python3 main.py
 ```
 ## live website
 https://hng-14-bza9us6y4-mazi-kunles-projects.vercel.app
