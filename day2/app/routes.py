@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 from extensions import *
 from db_helper import DB
+from nlp_parser import parse_query
 
 
 # create blueprint
@@ -31,7 +32,7 @@ def post_profiles():
 
     # check if name exists
     if not name or len(name) == 0:
-        return jsonify({"status": "error", "message": "Bad Request"}), 400      
+        return jsonify({"status": "error", "message": "Missing or empty parameter"}), 400      
 
     # check if name is numeric
     try:
@@ -41,7 +42,7 @@ def post_profiles():
     else:
         return jsonify({
             "status": "error",
-            "message": "Unprocessable Entity"
+            "message": "Invalid parameter type"
         }), 422
 
     # indenpodency check
@@ -115,3 +116,28 @@ def get_profile(id):
         }), 404
     
     return "", 204
+
+@main.route("/profiles/search", methods=['GET'])
+def get_searched_profiles():
+    query = request.args.get('q', '')
+    page = request.args.get('page', 1)
+    limit = request.args.get('limit', 10)
+
+    if not query:
+        return jsonify({
+            'status': 'error',
+            'message': 'Missing or empty parameter'}), 400
+    
+    filters = parse_query(query)
+    filters.update({'page': page, 'limit': limit})
+
+    profiles = DB().get_profiles(filters)
+
+    if profiles is None:
+        return jsonify({"status": "error", "message": "Profiles not found"}), 404
+        
+    elif profiles == 422:
+        return jsonify({"status": "error", "message": "Invalid query parameters"}), 422
+        
+    return jsonify(profiles), 200
+        
