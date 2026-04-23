@@ -60,7 +60,7 @@ Profiles are **idempotent** — submitting the same name twice returns the exist
 ```bash
 # Clone the repository
 git clone (https://github.com/mazi-kunle/HNG14.git)
-cd day1
+cd day2
 
 # Create and activate a virtual environment
 python -m venv venv
@@ -206,3 +206,176 @@ Deletes the profile with the given ID.
 **Success:** `204 No Content`
 
 ---
+
+### 5. Advanced Search Query — Natural Language API
+
+## Overview
+
+The `/api/profiles/search` endpoint accepts plain English queries and converts them into structured filters automatically — no special syntax required.
+
+**Endpoint:**
+```
+GET /api/profiles/search?q=<your query>
+```
+
+**Full example:**
+```
+GET /api/profiles/search?q=young males from nigeria&page=1&limit=20
+```
+
+---
+
+## Query Parameters
+
+| Parameter | Type    | Required | Default | Description                        |
+|-----------|---------|----------|---------|------------------------------------|
+| `q`       | string  | Yes      | —       | Plain English search query         |
+| `page`    | integer | No       | `1`     | Page number for pagination         |
+| `limit`   | integer | No       | `10`    | Number of results per page         |
+
+---
+
+## What You Can Search For
+
+### Gender
+
+Use natural gender words anywhere in the query.
+
+| Query example             | Filter applied      |
+|---------------------------|---------------------|
+| `males`                   | `gender=male`       |
+| `females`                 | `gender=female`     |
+| `women`                   | `gender=female`     |
+| `boys`                    | `gender=male`       |
+| `male and female`         | *(no gender filter)*|
+
+> **Note:** Combining both genders (e.g. `male and female`) cancels out the gender filter — all genders are returned.
+
+Accepted words: `male`, `males`, `man`, `men`, `boy`, `boys`, `female`, `females`, `woman`, `women`, `girl`, `girls`
+
+---
+
+### Age Groups
+
+Use age group keywords to filter by a defined life stage.
+
+| Keyword                          | Filter applied                              |
+|----------------------------------|---------------------------------------------|
+| `teenager`, `teen`, `teens`      | `age_group=teenager` + `min_age=13, max_age=19` |
+| `adult`, `adults`                | `age_group=adult` + `min_age=20, max_age=59`    |
+| `senior`, `seniors`, `elderly`   | `age_group=senior` + `min_age=60`               |
+
+---
+
+### "Young" Keyword *(Parser-only)*
+
+`young` and `youth` are special — they map to ages **16–24** for search purposes only. They are **not** stored age groups.
+
+| Query example   | Filter applied                  |
+|-----------------|---------------------------------|
+| `young males`   | `gender=male, min_age=16, max_age=24` |
+| `youth`         | `min_age=16, max_age=24`        |
+
+> **Important:** `young` will never appear as an `age_group` value in the results — it only affects the age range.
+
+---
+
+### Age Modifiers
+
+Combine directional keywords with a number to set a minimum or maximum age.
+
+| Query example           | Filter applied   |
+|-------------------------|------------------|
+| `above 30`              | `min_age=30`     |
+| `over 18`               | `min_age=18`     |
+| `below 25`              | `max_age=25`     |
+| `under 40`              | `max_age=40`     |
+| `teenagers above 17`    | `age_group=teenager, min_age=17, max_age=19` |
+
+Accepted `above` words: `above`, `over`, `older`, `atleast`, `minimum`, `min`, `plus`  
+Accepted `below` words: `below`, `under`, `younger`, `atmost`, `maximum`, `max`
+
+> **Tip:** When an age modifier conflicts with an age group's default bounds, the explicit modifier wins. For example, `teenagers above 17` overrides the group's default `min_age=13` with `min_age=17`.
+
+---
+
+### Country
+
+Use country names or demonyms, with or without a preposition.
+
+| Query example           | Filter applied     |
+|-------------------------|--------------------|
+| `from nigeria`          | `country_id=NG`    |
+| `in kenya`              | `country_id=KE`    |
+| `people of ghana`       | `country_id=GH`    |
+| `angolans`              | `country_id=AO`    |
+
+Accepted prepositions: `from`, `in`, `of`
+
+---
+
+## Combined Query Examples
+
+| Query                                   | Interpreted As                                                   |
+|-----------------------------------------|------------------------------------------------------------------|
+| `young males`                           | `gender=male, min_age=16, max_age=24`                           |
+| `females above 30`                      | `gender=female, min_age=30`                                     |
+| `people from angola`                    | `country_id=AO`                                                 |
+| `adult males from kenya`                | `gender=male, age_group=adult, min_age=20, max_age=59, country_id=KE` |
+| `male and female teenagers above 17`    | `age_group=teenager, min_age=17, max_age=19`                    |
+| `young males from nigeria`              | `gender=male, min_age=16, max_age=24, country_id=NG`            |
+| `senior women in ghana`                 | `gender=female, age_group=senior, min_age=60, country_id=GH`    |
+
+---
+
+## Response Format
+
+### Success `200`
+
+```json
+{
+  "query": "young males from nigeria",
+  "interpreted_as": {
+    "gender": "male",
+    "min_age": 16,
+    "max_age": 24,
+    "country_id": "NG"
+  },
+  "page": 1,
+  "limit": 20,
+  "results": []
+}
+```
+
+The `interpreted_as` field shows exactly how your query was understood — useful for debugging.
+
+### Uninterpretable Query `422`
+
+Returned when no filters could be extracted from the query.
+
+```json
+{
+  "status": "error",
+  "message": "Unable to interpret query"
+}
+```
+
+### Missing Query Parameter `400`
+
+```json
+{
+  "status": "error",
+  "message": "Missing or empty parameter"
+}
+
+```
+
+---
+
+## Rules & Limitations
+
+- **Rule-based parsing only** — no AI or LLMs are used. The parser works by matching keywords and patterns.
+- Queries must contain at least one recognizable keyword (gender, age group, age modifier, or country) to return results.
+- Word order does not matter — `nigeria from males young` is parsed the same as `young males from nigeria`.
+- Unrecognized words are safely ignored.
+- Country support is limited to the countries defined in the system. Unsupported country names will be ignored.
