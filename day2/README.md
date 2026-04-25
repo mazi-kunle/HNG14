@@ -1,4 +1,4 @@
-# Profile Intelligence Service
+# Intelligence Query Engine
 
 A Flask-based REST API that enriches name-based profiles by aggregating data from three external APIs — Genderize, Agify, and Nationalize — and storing the results for retrieval and management.
 
