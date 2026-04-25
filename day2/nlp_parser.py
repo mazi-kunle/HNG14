@@ -126,6 +126,5 @@ def parse_query(q):
     if not filters:
         return None
     
-    print(used)
     return filters
 

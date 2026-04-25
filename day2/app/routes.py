@@ -129,7 +129,11 @@ def get_searched_profiles():
             'message': 'Missing or empty parameter'}), 400
     
     filters = parse_query(query)
-    filters.update({'page': page, 'limit': limit})
+
+    if filters:
+        filters.update({'page': page, 'limit': limit})
+    else:
+        return jsonify({"status": "error", "message": "Invalid query parameters"}), 422
 
     profiles = DB().get_profiles(filters)
 

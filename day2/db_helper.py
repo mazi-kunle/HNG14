@@ -165,14 +165,15 @@ class DB:
         if type(profile) == list:
             profile_data = []
             for i in profile:
-                profile_data.append({
-                    "id": i.id,
-                    "name": i.name,
-                    "gender": i.gender,
-                    "age": i.age,
-                    "age_group": i.age_group,
-                    "country_id": i.country_id
-                })
+                profile_data.append(
+                    self.to_dict(i)
+                    # "id": i.id,
+                    # "name": i.name,
+                    # "gender": i.gender,
+                    # "age": i.age,
+                    # "age_group": i.age_group,
+                    # "country_id": i.country_id
+                )
         
         else:
             profile_data = {
