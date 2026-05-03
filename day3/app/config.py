@@ -30,7 +30,7 @@ class Config:
     GITHUB_CLI_REDIRECT_URI = os.getenv("GITHUB_CLI_REDIRECT_URI")
     
     # Token expiry (in seconds)
-    ACCESS_TOKEN_EXPIRY = 5 * 60       # 3 minutes
+    ACCESS_TOKEN_EXPIRY = 3 * 60       # 3 minutes
     REFRESH_TOKEN_EXPIRY = 5 * 60      # 5 minutes
 
     # Rate limiting

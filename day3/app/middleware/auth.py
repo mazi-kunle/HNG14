@@ -104,6 +104,7 @@ def require_role(*roles):
             @wraps(f)
             def decorated(*args, **kwargs):
                 if g.user.role not in roles:
+                    print(f'role not allowed')
                     return jsonify({
                         "status": "error",
                         "message": f"Access denied. Required role: {', '.join(roles)}"

@@ -1,5 +1,5 @@
 import requests
-from flask import Blueprint, redirect, request, jsonify, current_app
+from flask import Blueprint, redirect, request, jsonify, current_app, make_response
 import secrets
 from flask import session
 from app.models.user import User
@@ -107,6 +107,8 @@ def github_callback():
             "message": "Invalid state parameter"
         }), 400
     
+    session.pop("oauth_state", None)
+
     if not code:
         return jsonify({
             "status": "error",
@@ -137,13 +139,13 @@ def github_callback():
     user.last_login_at = datetime.now(timezone.utc)
     db.session.commit()
 
-    # for web portal
-    return jsonify({
-        "status": "success",
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "user": user.to_dict()
-    }), 200
+    # Redirect to web portal with tokens
+    web_portal_url = current_app.config.get("WEB_PORTAL_URL", "http://localhost:3000")
+    return redirect(
+        f"{web_portal_url}/auth/callback"
+        f"?access_token={access_token}"
+        f"&refresh_token={refresh_token}"
+    )
 
 
 @auth.route("/github/callback", methods=["POST"])

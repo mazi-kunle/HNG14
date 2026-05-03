@@ -18,7 +18,7 @@ stream_handler.setFormatter(logging.Formatter(
 ))
 
 logger.addHandler(file_handler)
-logger.addHandler(stream_handler)
+# logger.addHandler(stream_handler)
 
 def register_logger(app):
     """

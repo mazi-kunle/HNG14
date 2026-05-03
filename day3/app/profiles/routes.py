@@ -1,6 +1,6 @@
 import csv
 import io
-from flask import Blueprint, jsonify, request, make_response
+from flask import Blueprint, jsonify, request, make_response, g
 from app.utils.extensions import *
 from app.utils.db_helper import DB
 from app.utils.nlp_parser import parse_query
@@ -236,3 +236,13 @@ def export_profiles():
     response.headers["Content-Disposition"] = f"attachment; filename={filename}"
 
     return response, 200
+
+
+@profile.route("/whoami")
+@require_auth
+def whoami():
+    """Returns current logged in user info."""
+    return jsonify({
+        "status": 'success',
+        "data": g.user.to_dict()
+    })
