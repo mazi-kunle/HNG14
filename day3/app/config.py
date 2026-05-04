@@ -28,6 +28,8 @@ class Config:
     GITHUB_CLI_CLIENT_ID = os.getenv("GITHUB_CLI_CLIENT_ID")
     GITHUB_CLI_CLIENT_SECRET = os.getenv("GITHUB_CLI_CLIENT_SECRET")
     GITHUB_CLI_REDIRECT_URI = os.getenv("GITHUB_CLI_REDIRECT_URI")
+
+    WEB_PORTAL_URL = os.getenv("WEB_PORTAL_URL")
     
     # Token expiry (in seconds)
     ACCESS_TOKEN_EXPIRY = 3 * 60       # 3 minutes
