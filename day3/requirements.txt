@@ -13,5 +13,5 @@ requests
 rich
 six
 SQLAlchemy
-urllib3
+urllib3==1.26.18
 uuid7
