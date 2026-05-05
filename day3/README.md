@@ -1,381 +1,168 @@
-# Intelligence Query Engine
+# Insighta Labs — Backend
 
-A Flask-based REST API that enriches name-based profiles by aggregating data from three external APIs — Genderize, Agify, and Nationalize — and storing the results for retrieval and management.
-
----
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Tech Stack](#tech-stack)
-- [Getting Started](#getting-started)
-- [API Reference](#api-reference)
+The core API powering the Insighta Labs+ platform. Built with Flask, it handles authentication, profile intelligence, and data management. The backend is a pure REST API — all responses are JSON except auth redirects.
 
 ---
 
-## Overview
+## System Architecture
 
-This service accepts a name, calls three public APIs in parallel to infer gender, estimated age, and likely nationality, aggregates the results into a structured profile, and stores it with a UUID v7 identifier and a UTC timestamp.
-
-**External APIs used (no API key required):**
-
-| API | Endpoint |
-|---|---|
-| Genderize | `https://api.genderize.io?name={name}` |
-| Agify | `https://api.agify.io?name={name}` |
-| Nationalize | `https://api.nationalize.io?name={name}` |
-
-**Data processing rules:**
-
-- **Genderize** → extracts `gender`, `gender_probability`, and `count` (renamed to `sample_size`)
-- **Agify** → extracts `age` and classifies it into an `age_group`:
-  - `0–12` → `child`
-  - `13–19` → `teenager`
-  - `20–59` → `adult`
-  - `60+` → `senior`
-- **Nationalize** → extracts the country list and picks the entry with the highest probability as `country_id`
-
-Profiles are **idempotent** — submitting the same name twice returns the existing record instead of creating a duplicate.
+The system is made up of three separate components that all share the same backend. The CLI tool and web portal both communicate with the Flask backend which handles all business logic, authentication, and database operations. The backend talks to GitHub for OAuth authentication and to external APIs (Genderize, Agify, Nationalize) for profile intelligence data.
 
 ---
 
-## Tech Stack
+## Project Structure
 
-- **Runtime:** Python 3
-- **Framework:** Flask
-- **ID generation:** UUID v7
-- **Timestamps:** UTC ISO 8601
+The project follows the Application Factory + Blueprint pattern. Each feature lives in its own module with its own routes, keeping the codebase clean and maintainable.
+
+The `app/auth/` module handles all authentication — GitHub OAuth, token generation, and token refresh. The `app/profiles/` module handles all profile operations — listing, creating, searching, and exporting. The `app/middleware/` module contains decorators that protect routes and enforce roles. The `app/utils/` module contains shared utilities used across the entire app — database helpers, NLP parser, response formatters, and request logger.
 
 ---
 
-## Getting Started
+## Authentication Flow
+
+### Web Portal Flow
+
+The web portal login starts when the user clicks "Login with GitHub". The web portal redirects to the backend `/auth/github` endpoint. The backend generates a random state value, stores it in the session, then redirects the browser to GitHub's OAuth page. After the user approves access, GitHub redirects back to the backend `/auth/github/callback` with a temporary code and the state. The backend validates the state against what was stored in the session, then exchanges the code with GitHub to get a GitHub access token. The backend uses that token to fetch the user's profile from GitHub, creates or updates the user in the database, generates its own access and refresh tokens, and redirects the browser to the web portal with the tokens in the URL. The web portal receives the tokens and sets them as HTTP-only cookies.
+
+### CLI Flow
+
+The CLI login starts when the user runs `insighta login`. The CLI generates a `code_verifier` and derives a `code_challenge` from it using SHA256 (PKCE). The CLI starts a temporary local server on `localhost:8765` then opens the browser to the backend `/auth/github` endpoint with the `code_challenge` as a query parameter. After the user approves on GitHub, GitHub redirects to `localhost:8765/callback` with the temporary code. The CLI's local server catches the code, shuts down, then sends a POST request to the backend `/auth/github/callback` with the code and `code_verifier`. The backend verifies the PKCE challenge, exchanges the code with GitHub, generates tokens, and returns them as JSON. The CLI saves the tokens to `~/.insighta/credentials.json` and prints "Logged in as @username".
+
+### Why PKCE for CLI
+
+The CLI cannot safely store a `client_secret` because it runs on the user's machine and the code can be read. PKCE replaces the need for a `client_secret` by using a mathematical proof — the CLI generates a random `code_verifier`, derives a `code_challenge` from it, and sends the challenge to GitHub upfront. When exchanging the code later, only the party that generated the original `code_verifier` can complete the exchange. Even if someone intercepts the temporary code, they cannot use it without the `code_verifier` which only exists in the CLI's memory.
+
+---
+
+## Token Handling
+
+The system uses two tokens — a short-lived access token and a longer-lived refresh token. The access token expires in 3 minutes and is used on every API request. The refresh token expires in 5 minutes and is only used to get a new access token when the current one expires.
+
+When an access token expires the client automatically calls `POST /auth/refresh` with the refresh token, receives a new access and refresh token pair, updates its stored tokens, and retries the original request. The user never sees an interruption.
+
+Token rotation is enforced — every time the refresh token is used it is immediately invalidated and a new pair is issued. The old refresh token is stored in the database so if someone tries to use a stolen refresh token after it has already been used, the backend detects it and rejects the request.
+
+The CLI stores tokens in `~/.insighta/credentials.json`. The web portal stores tokens in HTTP-only cookies which JavaScript cannot read, protecting against XSS attacks.
+
+---
+
+## Role Enforcement
+
+The system has two roles — `admin` and `analyst`. Admins have full access and can create, delete, read, and search profiles. Analysts are read-only and can only read and search profiles.
+
+The first user to sign up automatically gets the admin role. All subsequent users get the analyst role. Roles can be manually updated in the database.
+
+Roles are enforced using middleware decorators that run before every route handler. Every protected route has three decorators — `@require_auth` which validates the JWT token and loads the user, `@require_api_version` which checks the `X-API-Version: 1` header, and `@require_role` which checks the user's role against the required roles for that endpoint. If any check fails the request is rejected before the route handler runs.
+
+---
+
+## Natural Language Search
+
+The `/api/profiles/search?q=` endpoint accepts natural language queries like "young males from nigeria" or "adults over 30 from the US". The `nlp_parser.py` module parses these queries by extracting gender keywords, age group keywords, country references, and age ranges, then converts them into database filter parameters that are passed to the standard profile query.
+
+---
+
+## Rate Limiting
+
+Auth endpoints are limited to 10 requests per minute. All other endpoints are limited to 60 requests per minute per user. Requests that exceed the limit receive a `429 Too Many Requests` response.
+
+---
+
+## Request Logging
+
+Every request is logged with the HTTP method, endpoint, status code, and response time. Logs are written to both the terminal and `insighta.log`.
+
+---
+
+## Setup
 
 ### Prerequisites
 
-- Python 3.8+
-- pip
+Python 3.8 or higher, MySQL or SQLite, and two GitHub OAuth Apps — one for the web portal and one for the CLI.
 
 ### Installation
 
 ```bash
-# Clone the repository
-git clone (https://github.com/mazi-kunle/HNG14.git)
-cd day2
-
-# Create and activate a virtual environment
-python -m venv venv
-source venv/bin/activate        # macOS/Linux
-venv\Scripts\activate           # Windows
-
-# Install dependencies
+git clone https://github.com/mazi-kunle/HNG14.git
+cd day3
 pip install -r requirements.txt
 ```
 
-### Running the Server
+The following variables are required:
 
 ```bash
-python3 main.py
+FLASK_ENV=development
+SECRET_KEY=your_secret_key_here
+DATABASE_URL=sqlite:///insighta.db
+
+GITHUB_CLIENT_ID=your_web_client_id
+GITHUB_CLIENT_SECRET=your_web_client_secret
+GITHUB_REDIRECT_URI=http://localhost:5000/auth/github/callback
+
+GITHUB_CLI_CLIENT_ID=your_cli_client_id
+GITHUB_CLI_CLIENT_SECRET=your_cli_client_secret
+GITHUB_CLI_REDIRECT_URI=http://localhost:8765/callback
+
+WEB_PORTAL_URL=http://localhost:3000
 ```
 
-The server starts on `http://localhost:5000` by default.
+
+```
+
+### Seed Database
+
+```bash
+python -m seeds.seed
+```
+
+### Run
+
+```bash
+python3 run.py
+```
+
+The server runs on `http://localhost:5000`.
 
 ---
-
-## live website
-
-https://hng14-production-81d0.up.railway.app
 
 ## API Reference
 
-### 1. Create a Profile
+### Auth Endpoints
 
-**`POST /api/profiles`**
+`GET /auth/github` redirects the user to GitHub OAuth. No authentication required.
 
-Accepts a name, enriches it via external APIs, and stores the result. If a profile for that name already exists, the existing record is returned.
+`GET /auth/github/callback` handles the OAuth callback for the web portal. GitHub redirects here after the user approves access. No authentication required.
 
-**Request body:**
-```json
-{ "name": "ella" }
-```
+`POST /auth/github/callback` handles the OAuth callback for the CLI. The CLI sends the code and code_verifier here. No authentication required.
 
-**Success — new profile (201):**
-```json
-{
-  "status": "success",
-  "data": {
-    "id": "b3f9c1e2-7d4a-4c91-9c2a-1f0a8e5b6d12",
-    "name": "ella",
-    "gender": "female",
-    "gender_probability": 0.99,
-    "sample_size": 1234,
-    "age": 46,
-    "age_group": "adult",
-    "country_id": "DRC",
-    "country_probability": 0.85,
-    "created_at": "2026-04-01T12:00:00Z"
-  }
-}
-```
+`POST /auth/refresh` accepts a refresh token and returns a new access and refresh token pair. The old refresh token is immediately invalidated.
 
-**Success — profile already exists (200):**
-```json
-{
-  "status": "success",
-  "message": "Profile already exists",
-  "data": { "...existing profile..." }
-}
-```
+`POST /auth/logout` accepts a refresh token and invalidates it server-side. The user is logged out on all clients.
+
+### Profile Endpoints
+
+All profile endpoints require the `X-API-Version: 1` header and a valid Bearer token.
+
+`GET /api/profiles` returns a paginated list of profiles. Supports filtering by gender, country, age group, min age, max age, and sorting. Available to admin and analyst.
+
+`POST /api/profiles` creates a new profile by fetching data from external APIs. Requires a `name` in the request body. Admin only.
+
+`GET /api/profiles/<id>` returns a single profile by ID. Available to admin and analyst.
+
+`DELETE /api/profiles/<id>` deletes a profile by ID. Admin only.
+
+`GET /api/profiles/search?q=` accepts a natural language query and returns matching profiles. Available to admin and analyst.
+
+`GET /api/profiles/export?format=csv` exports profiles as a CSV file. Supports the same filters as the list endpoint. Available to admin and analyst.
+
+`GET /api/whoami` returns the currently authenticated user's profile. Available to admin and analyst.
 
 ---
 
-### 2. Get a Profile by ID
-
-**`GET /api/profiles/{id}`**
-
-**Success (200):**
-```json
-{
-  "status": "success",
-  "data": {
-    "id": "b3f9c1e2-7d4a-4c91-9c2a-1f0a8e5b6d12",
-    "name": "emmanuel",
-    "gender": "male",
-    "gender_probability": 0.99,
-    "sample_size": 1234,
-    "age": 25,
-    "age_group": "adult",
-    "country_id": "NG",
-    "country_probability": 0.85,
-    "created_at": "2026-04-01T12:00:00Z"
-  }
-}
-```
-
 ---
 
-### 3. List Profiles
+## Deployment
 
-**`GET /api/profiles`**
+The backend is deployed on Railway. Set all environment variables in the Railway dashboard under the Variables tab.
 
-Returns all stored profiles. Supports optional case-insensitive query parameters for filtering.
-
-**Query parameters:**
-
-| Parameter | Description | Example |
-|---|---|---|
-| `gender` | Filter by gender | `male`, `female` |
-| `country_id` | Filter by country code | `NG`, `US` |
-| `age_group` | Filter by age group | `adult`, `child` |
-
-**Example:** `GET /api/profiles?gender=male&country_id=NG`
-
-**Success (200):**
-```json
-{
-  "status": "success",
-  "count": 2,
-  "data": [
-    {
-      "id": "id-1",
-      "name": "emmanuel",
-      "gender": "male",
-      "age": 25,
-      "age_group": "adult",
-      "country_id": "NG"
-    },
-    {
-      "id": "id-2",
-      "name": "sarah",
-      "gender": "female",
-      "age": 28,
-      "age_group": "adult",
-      "country_id": "US"
-    }
-  ]
-}
-```
-
----
-
-### 4. Delete a Profile
-
-**`DELETE /api/profiles/{id}`**
-
-Deletes the profile with the given ID.
-
-**Success:** `204 No Content`
-
----
-
-### 5. Advanced Search Query — Natural Language API
-
-## Overview
-
-The `/api/profiles/search` endpoint accepts plain English queries and converts them into structured filters automatically — no special syntax required.
-
-**Endpoint:**
-```
-GET /api/profiles/search?q=<your query>
-```
-
-**Full example:**
-```
-GET /api/profiles/search?q=young males from nigeria&page=1&limit=20
-```
-
----
-
-## Query Parameters
-
-| Parameter | Type    | Required | Default | Description                        |
-|-----------|---------|----------|---------|------------------------------------|
-| `q`       | string  | Yes      | —       | Plain English search query         |
-| `page`    | integer | No       | `1`     | Page number for pagination         |
-| `limit`   | integer | No       | `10`    | Number of results per page         |
-
----
-
-## What You Can Search For
-
-### Gender
-
-Use natural gender words anywhere in the query.
-
-| Query example             | Filter applied      |
-|---------------------------|---------------------|
-| `males`                   | `gender=male`       |
-| `females`                 | `gender=female`     |
-| `women`                   | `gender=female`     |
-| `boys`                    | `gender=male`       |
-| `male and female`         | *(no gender filter)*|
-
-> **Note:** Combining both genders (e.g. `male and female`) cancels out the gender filter — all genders are returned.
-
-Accepted words: `male`, `males`, `man`, `men`, `boy`, `boys`, `female`, `females`, `woman`, `women`, `girl`, `girls`
-
----
-
-### Age Groups
-
-Use age group keywords to filter by a defined life stage.
-
-| Keyword                          | Filter applied                              |
-|----------------------------------|---------------------------------------------|
-| `teenager`, `teen`, `teens`      | `age_group=teenager` + `min_age=13, max_age=19` |
-| `adult`, `adults`                | `age_group=adult` + `min_age=20, max_age=59`    |
-| `senior`, `seniors`, `elderly`   | `age_group=senior` + `min_age=60`               |
-
----
-
-### "Young" Keyword *(Parser-only)*
-
-`young` and `youth` are special — they map to ages **16–24** for search purposes only. They are **not** stored age groups.
-
-| Query example   | Filter applied                  |
-|-----------------|---------------------------------|
-| `young males`   | `gender=male, min_age=16, max_age=24` |
-| `youth`         | `min_age=16, max_age=24`        |
-
-> **Important:** `young` will never appear as an `age_group` value in the results — it only affects the age range.
-
----
-
-### Age Modifiers
-
-Combine directional keywords with a number to set a minimum or maximum age.
-
-| Query example           | Filter applied   |
-|-------------------------|------------------|
-| `above 30`              | `min_age=30`     |
-| `over 18`               | `min_age=18`     |
-| `below 25`              | `max_age=25`     |
-| `under 40`              | `max_age=40`     |
-| `teenagers above 17`    | `age_group=teenager, min_age=17, max_age=19` |
-
-Accepted `above` words: `above`, `over`, `older`, `atleast`, `minimum`, `min`, `plus`  
-Accepted `below` words: `below`, `under`, `younger`, `atmost`, `maximum`, `max`
-
-> **Tip:** When an age modifier conflicts with an age group's default bounds, the explicit modifier wins. For example, `teenagers above 17` overrides the group's default `min_age=13` with `min_age=17`.
-
----
-
-### Country
-
-Use country names or demonyms, with or without a preposition.
-
-| Query example           | Filter applied     |
-|-------------------------|--------------------|
-| `from nigeria`          | `country_id=NG`    |
-| `in kenya`              | `country_id=KE`    |
-| `people of ghana`       | `country_id=GH`    |
-| `angolans`              | `country_id=AO`    |
-
-Accepted prepositions: `from`, `in`, `of`
-
----
-
-## Combined Query Examples
-
-| Query                                   | Interpreted As                                                   |
-|-----------------------------------------|------------------------------------------------------------------|
-| `young males`                           | `gender=male, min_age=16, max_age=24`                           |
-| `females above 30`                      | `gender=female, min_age=30`                                     |
-| `people from angola`                    | `country_id=AO`                                                 |
-| `adult males from kenya`                | `gender=male, age_group=adult, min_age=20, max_age=59, country_id=KE` |
-| `male and female teenagers above 17`    | `age_group=teenager, min_age=17, max_age=19`                    |
-| `young males from nigeria`              | `gender=male, min_age=16, max_age=24, country_id=NG`            |
-| `senior women in ghana`                 | `gender=female, age_group=senior, min_age=60, country_id=GH`    |
-
----
-
-## Response Format
-
-### Success `200`
-
-```json
-{
-  "query": "young males from nigeria",
-  "interpreted_as": {
-    "gender": "male",
-    "min_age": 16,
-    "max_age": 24,
-    "country_id": "NG"
-  },
-  "page": 1,
-  "limit": 20,
-  "results": []
-}
-```
-
-The `interpreted_as` field shows exactly how your query was understood — useful for debugging.
-
-### Uninterpretable Query `422`
-
-Returned when no filters could be extracted from the query.
-
-```json
-{
-  "status": "error",
-  "message": "Unable to interpret query"
-}
-```
-
-### Missing Query Parameter `400`
-
-```json
-{
-  "status": "error",
-  "message": "Missing or empty parameter"
-}
-
-```
-
----
-
-## Rules & Limitations
-
-- **Rule-based parsing only** — no AI or LLMs are used. The parser works by matching keywords and patterns.
-- Queries must contain at least one recognizable keyword (gender, age group, age modifier, or country) to return results.
-- Word order does not matter — `nigeria from males young` is parsed the same as `young males from nigeria`.
-- Unrecognized words are safely ignored.
-- Country support is limited to the countries defined in the system. Unsupported country names will be ignored.
+Live URL: `https://hng14-production-81d0.up.railway.app`
